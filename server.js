@@ -1,8 +1,13 @@
 require('dotenv').config();
-
+const chalk = require('chalk');
+const debug = require('debug')('app');
+const morgan = require('morgan');
 var express = require('express');
 var passport = require('passport');
-var Strategy = require('passport-facebook').Strategy;
+var mongoose = require('mongoose');
+const User = require('./models/user');
+var Strategy = require('passport-windowslive').Strategy;
+var GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 
 // Configure the Facebook strategy for use by Passport.
@@ -12,19 +17,49 @@ var Strategy = require('passport-facebook').Strategy;
 // behalf, along with the user's profile.  The function must invoke `cb`
 // with a user object, which will be set at `req.user` in route handlers after
 // authentication.
-passport.use(new Strategy({
-    clientID: process.env['FACEBOOK_CLIENT_ID'],
-    clientSecret: process.env['FACEBOOK_CLIENT_SECRET'],
-    callbackURL: '/return'
-  },
-  function(accessToken, refreshToken, profile, cb) {
-    // In this example, the user's Facebook profile is supplied as the user
-    // record.  In a production-quality application, the Facebook profile should
-    // be associated with a user record in the application's database, which
-    // allows for account linking and authentication with other identity
-    // providers.
-    return cb(null, profile);
-  }));
+passport.use(new GoogleStrategy({
+  clientID: process.env['GOOGLE_CLIENT_ID'],
+  clientSecret: process.env['GOOGLE_CLIENT_SECRET'],
+  callbackURL: 'http://localhost:3000/auth/google/callback'
+},
+  function (accessToken, refreshToken, profile, done) {
+    //check user table for anyone with a facebook ID of profile.id
+    User.findOne({ googleId: profile.id }, function (err, user) {
+      if (err) {
+        debug(`Error finding User: ${err}`);
+        return done(err);
+      }
+      // No User was found... so create a new user with values from Google
+      if (!user) {
+        const newUser = {
+          googleId: profile.id,
+          name: profile.displayName,
+          email: profile.emails,
+          username: profile.username,
+          provider: 'google',
+          google: profile._json,
+          accesstoken: accessToken,
+          refreshtoken: refreshToken
+        }
+        //save to DB
+        User.create(newUser, function(err, newlyCreatedUser) {
+          if (err) {
+            debug(`ERROR saving user to DB: ${err}`);
+            return done (err)
+          } else {
+            //found user
+            debug(`Created user: ${newlyCreatedUser}`);
+            return done(newlyCreatedUser);
+          }
+        });
+      } else {
+        // user already exist
+        debug(`User already exist: ${user}`);
+        return done (err, user);
+      }
+    });
+  }
+));
 
 
 // Configure Passport authenticated session persistence.
@@ -43,6 +78,26 @@ passport.serializeUser(function(user, cb) {
 passport.deserializeUser(function(obj, cb) {
   cb(null, obj);
 });
+
+
+//connect to DB engine with mongoose
+var userdb = process.env.USERDB
+//console.log(userdb);
+var pass = process.env.DBPWD
+//console.log(pass);
+var dbs = process.env.DB
+//console.log(dbs); 
+                                       
+const db = 'mongodb+srv://'+userdb+':'+pass+'@cluster0.4vkik.gcp.mongodb.net/'+dbs+'?retryWrites=true&w=majority'
+mongoose
+    .connect(db, { 
+        useNewUrlParser: true,
+        useCreateIndex: true,
+        useUnifiedTopology: true,
+        useFindAndModify: false
+      })
+    .then(() => console.log('MongoDB connected...'))
+    .catch(err => console.log(err));
 
 
 // Create a new Express application.
@@ -65,6 +120,17 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 
+// This code loads the user profile into the locals property of the response. 
+// This will make it available to all of the views in the app.
+app.use(function(req, res, next) {
+  // Set the authenticated user in the
+  // template locals
+  if (req.user) {
+    res.locals.user = req.user.profile;
+  }
+  next();
+});
+
 // Define routes.
 app.get('/',
   function(req, res) {
@@ -76,11 +142,12 @@ app.get('/login',
     res.render('login');
   });
 
-app.get('/login/facebook',
-  passport.authenticate('facebook'));
+// windows
+app.get('/login/windowslive',
+  passport.authenticate('windowslive'));
 
 app.get('/return', 
-  passport.authenticate('facebook', { failureRedirect: '/login' }),
+  passport.authenticate('windowslive', { failureRedirect: '/login' }),
   function(req, res) {
     res.redirect('/');
   });
@@ -91,4 +158,20 @@ app.get('/profile',
     res.render('profile', { user: req.user });
   });
 
-app.listen(process.env['PORT'] || 8080);
+
+// Google routes
+app.get('/auth/google',
+passport.authenticate('google', { scope: ['profile'] }));
+
+app.get('/auth/google/callback', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/');
+  });
+
+//Server
+var server = app.listen(process.env.PORT || 3000, function(){
+  var port = server.address().port;
+  debug(`Express is running on port ${port}`);
+});

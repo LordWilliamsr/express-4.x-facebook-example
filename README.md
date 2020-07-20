@@ -19,7 +19,20 @@ variables set to the appropriate credentials.
 
 ```bash
 $ CLIENT_ID=__FACEBOOK_CLIENT_ID__ CLIENT_SECRET=__FACEBOOK_CLIENT_SECRET__ node server.js
+$ CLIENT_ID=__WINDOWS_LIVE_CLIENT_ID__ CLIENT_SECRET=__WINDOWS_LIVE_CLIENT_SECRET__ node server.js
 ```
+# set Env variables
+$env:WINDOWS_LIVE_CLIENT_ID=""
+$env:WINDOWS_LIVE_CLIENT_SECRET=""
+
+# get env variables values
+$Env:WINDOWS_LIVE_CLIENT_ID
+$WINDOWS_LIVE_CLIENT_SECRET
+
+# mongo
+admin
+3KG9vtgvzbAN0Czd
+mongodb+srv://admin:<password>@cluster0.4vkik.gcp.mongodb.net/<dbname>?retryWrites=true&w=majority
 
 Open a web browser and navigate to [http://localhost:3000/](http://localhost:3000/)
 to see the example in action.
